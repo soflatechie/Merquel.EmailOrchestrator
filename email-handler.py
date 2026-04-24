@@ -11,8 +11,8 @@ import imaplib
 import email
 import os
 from datetime import date
-import csv
-import io
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import asyncio
@@ -78,6 +78,7 @@ def get_gmail_inbox() -> str:
                     'sender': sender,
                     'subject': subject,
                     'date': date_str,
+                    'message_id': msg_id,
                 })
     except Exception as e:
         print(f"IMAP ERROR: {e}")
@@ -90,27 +91,48 @@ def get_gmail_inbox() -> str:
 
 
 #------------------------------------------------------------------------------
-# Function to write the categorized email list to a CSV file
+# Function to write the categorized email list to an Excel file
 #------------------------------------------------------------------------------
 @function_tool
 def write_csv_report(items: List[CategorizedItem]) -> str:
-    """Write categorized email results to a CSV file.
+    """Write categorized email results to an Excel file.
     Each item has index (into the fetched email list), category, and reason."""
-    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'inbox_report_{date.today().strftime("%Y-%m-%d")}.csv')
-    fieldnames = ['date', 'sender', 'subject', 'category', 'reason']
-    with open(output_path, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
-        writer.writeheader()
-        for item in items:
-            stored = _email_store[item.index] if item.index < len(_email_store) else {}
-            writer.writerow({
-                'date': stored.get('date', ''),
-                'sender': stored.get('sender', ''),
-                'subject': stored.get('subject', ''),
-                'category': item.category,
-                'reason': item.reason,
-            })
-    print(f"CSV report written: {output_path} ({len(items)} rows)")
+    output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'inbox_report_{date.today().strftime("%Y-%m-%d")}.xlsx')
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Inbox Report'
+    headers = ['Date', 'Sender', 'Subject', 'Category', 'Reason']
+    header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
+    header_font = Font(bold=True, color='FFFFFF')
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center')
+    for item in items:
+        stored = _email_store[item.index] if item.index < len(_email_store) else {}
+        row_num = ws.max_row + 1
+        ws.append([
+            stored.get('date', ''),
+            stored.get('sender', ''),
+            stored.get('subject', ''),
+            item.category,
+            item.reason,
+        ])
+        # Make the Subject cell a clickable link that opens the email in Gmail
+        msg_id = stored.get('message_id', '').strip('<>').strip()
+        if msg_id:
+            from urllib.parse import quote
+            gmail_url = f'https://mail.google.com/mail/u/0/#search/rfc822msgid%3A{quote(msg_id)}'
+            subject_cell = ws.cell(row=row_num, column=3)
+            subject_cell.hyperlink = gmail_url
+            subject_cell.font = Font(color='0563C1', underline='single')
+    # Auto-fit column widths
+    for col in ws.columns:
+        max_len = max((len(str(cell.value)) if cell.value else 0) for cell in col)
+        ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 60)
+    wb.save(output_path)
+    print(f"Excel report written: {output_path} ({len(items)} rows)")
     return f'success:{output_path}'
 
 
