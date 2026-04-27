@@ -2,5 +2,7 @@
 .env
 *.csv
 *.xlsx
+*.txt
+
 
 
