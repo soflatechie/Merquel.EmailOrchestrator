@@ -1,3 +1,9 @@
+#------------------------------------------------------------------------------
+# This script shows one way you can manage your inbox.  Currently this is 
+# working with gmail, but could be expanded to other providers.  The script
+# has two tools, one to get the emails from the inbox, and the other to save
+# the emails to excel, categorized as specified.
+#------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
 # Imports
@@ -20,7 +26,7 @@ import asyncio
 load_dotenv(override=True)
 
 #------------------------------------------------------------------------------
-# Pydantic models for strict schema compatibility
+# Model to enforce structure
 #------------------------------------------------------------------------------
 class CategorizedItem(BaseModel):
     index: int
@@ -82,7 +88,7 @@ def get_gmail_inbox() -> str:
                 })
     except Exception as e:
         print(f"IMAP ERROR: {e}")
-    # Return compact list for LLM: only index + fields needed to classify
+   
     compact = [
         {'index': i, 'sender': e['sender'], 'subject': e['subject'], 'body_snippet': ''}
         for i, e in enumerate(_email_store)
@@ -95,8 +101,7 @@ def get_gmail_inbox() -> str:
 #------------------------------------------------------------------------------
 @function_tool
 def write_csv_report(items: List[CategorizedItem]) -> str:
-    """Write categorized email results to an Excel file.
-    Each item has index (into the fetched email list), category, and reason."""
+    
     output_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'inbox_report_{date.today().strftime("%Y-%m-%d")}.xlsx')
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -119,7 +124,7 @@ def write_csv_report(items: List[CategorizedItem]) -> str:
             item.category,
             item.reason,
         ])
-        # Make the Subject cell a clickable link that opens the email in Gmail
+        
         msg_id = stored.get('message_id', '').strip('<>').strip()
         if msg_id:
             from urllib.parse import quote
@@ -127,7 +132,7 @@ def write_csv_report(items: List[CategorizedItem]) -> str:
             subject_cell = ws.cell(row=row_num, column=3)
             subject_cell.hyperlink = gmail_url
             subject_cell.font = Font(color='0563C1', underline='single')
-    # Auto-fit column widths
+    
     for col in ws.columns:
         max_len = max((len(str(cell.value)) if cell.value else 0) for cell in col)
         ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 60)
@@ -144,7 +149,6 @@ async def main():
     email_manager = Agent(
         name="Email Manager",
         instructions="""You are an email inbox categorization manager.
-
 Follow these steps exactly:
 1. Call get_gmail_inbox (no arguments) to retrieve emails. It returns a JSON list where each item has an 'index', 'sender', and 'subject'.
 2. Using your own judgment, classify EVERY email into exactly ONE category:
